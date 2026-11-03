@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>차체 조립 게임</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Inter 폰트 사용 및 터치 선택 방지 */
+        body {
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        /* Canvas 반응형 처리 */
+        #gameCanvas {
+            background-color: #111827;
+            border-radius: 0.75rem;
+            width: 100%;
+            height: auto;
+            max-height: 50vh;
+            display: block;
+        }
+
+        @keyframes pulse-fast {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.8; }
+        }
+        .animate-pulse-fast {
+            animation: pulse-fast 0.3s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col items-center justify-between p-4 selection:bg-none">
+
+    <!-- 메인 컨테이너 (최소 320px 보장) -->
+    <div class="w-full max-w-md mx-auto flex flex-col justify-between flex-1 min-w-[320px]">
+        
+        <!-- HEADER (타이틀) -->
+        <header class="text-center py-2">
+            <h1 class="text-2xl font-bold tracking-wider text-amber-400">⚡ 차체 조립 (Body Assembly)</h1>
+        </header>
+
+        <!-- 1. 시작 화면 (Start Screen) -->
+        <div id="startScreen" class="bg-slate-800 p-6 rounded-2xl shadow-xl flex flex-col justify-between my-auto border border-slate-700">
+            <div>
+                <h2 class="text-xl font-bold text-center mb-4 text-emerald-400">게임 규칙 및 안내</h2>
+                <div class="space-y-3 text-sm text-slate-300 mb-6 bg-slate-900/60 p-4 rounded-xl border border-slate-700/50">
+                    <p>🎯 <strong>목표:</strong> 제한시간 60초 동안 정확히 용접하여 레벨을 올리고 최고 점수를 달성하세요!</p>
+                    <p>⌨️ <strong>조작:</strong> 방향키(← ↑ ↓ →)를 키보드나 터치 버튼으로 입력하세요.</p>
+                    <p>⚡ <strong>규칙 안내:</strong></p>
+                    <ul class="list-disc list-inside pl-2 space-y-1 text-xs text-slate-400">
+                        <li>정답 시 <span class="text-blue-400 font-bold">+1점</span> (용접 결합 완성 비주얼)</li>
+                        <li>틀려도 <span class="text-red-400 font-bold">-1점</span> 후 다음 스팟으로 진행됩니다.</li>
+                        <li>한 차체의 모든 포인트를 <strong>100% 성공</strong>하면 다음 단계에서 용접 포인트 수가 증가합니다! (보너스 <span class="text-amber-400 font-bold">+10점</span>)</li>
+                        <li>공정 완료 시 천장 레일을 따라 차체가 이송됩니다.</li>
+                    </ul>
+                </div>
+            </div>
+            <button id="startBtn" onclick="startGame()" class="w-full py-4 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-slate-950 font-black text-xl rounded-xl shadow-lg transition duration-150 transform active:scale-95">
+                게임 시작하기
+            </button>
+        </div>
+
+        <!-- 2. 플레이 화면 (Play Screen) -->
+        <div id="playScreen" class="hidden flex-col justify-between flex-1 my-auto w-full">
+            <!-- 상단 바 (시간, 점수, 레벨/스팟수) -->
+            <div class="flex justify-between items-center bg-slate-800 p-3 px-4 rounded-xl mb-3 border border-slate-700">
+                <div class="flex items-center space-x-2">
+                    <span class="text-xs text-slate-400 font-bold">시간</span>
+                    <span id="timeDisplay" class="text-2xl font-extrabold text-amber-400">60</span><span class="text-xs text-amber-400">s</span>
+                </div>
+                <div class="flex items-center space-x-1 text-xs text-slate-300">
+                    <span>단계:</span>
+                    <span id="levelDisplay" class="text-amber-400 font-bold text-sm">1</span>
+                    <span class="text-slate-500">|</span>
+                    <span>포인트:</span>
+                    <span id="spotsCountDisplay" class="text-cyan-400 font-bold text-sm">5개</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="text-xs text-slate-400 font-bold">점수</span>
+                    <span id="scoreDisplay" class="text-2xl font-extrabold text-emerald-400">0</span>
+                </div>
+            </div>
+
+            <!-- Canvas 영역 (차체 금형, 천장 레일 및 용접 스팟 표시) -->
+            <div class="relative w-full flex-1 flex items-center justify-center">
+                <canvas id="gameCanvas" width="400" height="300" class="shadow-2xl border border-slate-700"></canvas>
+            </div>
+
+            <!-- 모바일 및 화면 조작용 컨트롤러 버튼 -->
+            <div class="mt-4 grid grid-cols-3 gap-2 w-full max-w-[280px] mx-auto">
+                <div></div>
+                <button onclick="handleInput('ArrowUp')" class="h-14 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 rounded-xl font-black text-2xl flex items-center justify-center border-b-4 border-slate-900 active:border-b-0 active:translate-y-1 transition-all text-emerald-400">↑</button>
+                <div></div>
+                <button onclick="handleInput('ArrowLeft')" class="h-14 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 rounded-xl font-black text-2xl flex items-center justify-center border-b-4 border-slate-900 active:border-b-0 active:translate-y-1 transition-all text-emerald-400">←</button>
+                <button onclick="handleInput('ArrowDown')" class="h-14 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 rounded-xl font-black text-2xl flex items-center justify-center border-b-4 border-slate-900 active:border-b-0 active:translate-y-1 transition-all text-emerald-400">↓</button>
+                <button onclick="handleInput('ArrowRight')" class="h-14 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 rounded-xl font-black text-2xl flex items-center justify-center border-b-4 border-slate-900 active:border-b-0 active:translate-y-1 transition-all text-emerald-400">→</button>
+            </div>
+        </div>
+
+        <!-- 3. 게임 오버 화면 (Game Over Screen) -->
+        <div id="gameOverScreen" class="hidden bg-slate-800 p-6 rounded-2xl shadow-xl flex-col justify-between my-auto border border-slate-700 text-center">
+            <div>
+                <h2 class="text-2xl font-bold text-red-500 mb-2">제한 시간 종료!</h2>
+                <p class="text-slate-400 text-sm mb-4">차체 용접 조립 작업이 완료되었습니다.</p>
+
+                <div class="bg-slate-900/80 p-5 rounded-xl border border-slate-700 mb-6">
+                    <p class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">최종 점수</p>
+                    <span id="finalScoreDisplay" class="text-5xl font-black text-amber-400">0</span>
+                    <span class="text-lg text-amber-400 font-bold">점</span>
+                    <div class="mt-3 text-xs text-slate-400 flex justify-around border-t border-slate-800 pt-3">
+                        <div>달성 레벨: <span id="finalLevelDisplay" class="text-emerald-400 font-bold">1</span></div>
+                        <div>최대 용접 스팟: <span id="finalSpotDisplay" class="text-cyan-400 font-bold">5개</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="showStartScreen()" class="w-full py-4 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-slate-950 font-black text-xl rounded-xl shadow-lg transition duration-150 transform active:scale-95">
+                다시 도전하기
+            </button>
+        </div>
+
+        <!-- 하단 카피라이트 -->
+        <footer class="text-center py-2 text-xs text-slate-500">
+            웹 브라우저 및 모바일 완벽 지원 (360px 이상)
+        </footer>
+    </div>
+
+    <script>
+        // --- 게임 전역 변수 설정 ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const ARROWS = ['ArrowLeft', 'ArrowUp', 'ArrowDown', 'ArrowRight'];
+        const ARROW_ICONS = {
+            'ArrowLeft': '←',
+            'ArrowUp': '↑',
+            'ArrowDown': '↓',
+            'ArrowRight': '→'
+        };
+
+        let gameState = 'START'; // 'START', 'PLAY', 'GAMEOVER'
+        let score = 0;
+        let timeLeft = 60;
+        let timerInterval = null;
+        
+        let spotCount = 5; // 기본 용접 스팟 수
+        let currentLevel = 1;
+        let currentCarSpots = [];
+        let currentSpotIndex = 0;
+        let hasWrongInCurrentCar = false; // 현재 차체에서 틀린 적이 있는지 체크
+
+        // 천장 레일 이송 애니메이션 제어 변수
+        let carOffsetX = 0; // 차체 X 위치 오프셋 (0이 중앙)
+        let isTransitioning = false; // 레일 이송 애니메이션 중 여부
+        let isCarCompleted = false; // 회색 완료 칠하기 모드
+
+        // 용접 스파크 particle 및 피드백 텍스트
+        let sparkParticles = [];
+        let feedbackEffects = [];
+
+        // --- 초기화 및 화면 전환 ---
+        function showStartScreen() {
+            gameState = 'START';
+            document.getElementById('startScreen').classList.remove('hidden');
+            document.getElementById('startScreen').classList.add('flex');
+            document.getElementById('playScreen').classList.add('hidden');
+            document.getElementById('playScreen').classList.remove('flex');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.remove('flex');
+        }
+
+        function startGame() {
+            gameState = 'PLAY';
+            score = 0;
+            timeLeft = 60;
+            spotCount = 5;
+            currentLevel = 1;
+            feedbackEffects = [];
+            sparkParticles = [];
+            carOffsetX = 0;
+            isTransitioning = false;
+            isCarCompleted = false;
+
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('startScreen').classList.remove('flex');
+            document.getElementById('playScreen').classList.remove('hidden');
+            document.getElementById('playScreen').classList.add('flex');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.remove('flex');
+
+            updateUI();
+            generateNewCar();
+
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById('timeDisplay').textContent = timeLeft;
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        function endGame() {
+            gameState = 'GAMEOVER';
+            clearInterval(timerInterval);
+            document.getElementById('playScreen').classList.add('hidden');
+            document.getElementById('playScreen').classList.remove('flex');
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+            document.getElementById('gameOverScreen').classList.add('flex');
+            document.getElementById('finalScoreDisplay').textContent = score;
+            document.getElementById('finalLevelDisplay').textContent = currentLevel;
+            document.getElementById('finalSpotDisplay').textContent = spotCount + '개';
+        }
+
+        function updateUI() {
+            document.getElementById('scoreDisplay').textContent = score;
+            document.getElementById('timeDisplay').textContent = timeLeft;
+            document.getElementById('levelDisplay').textContent = currentLevel;
+            document.getElementById('spotsCountDisplay').textContent = spotCount + '개';
+        }
+
+        // --- 차체용 동적 용접 스팟 좌표 생성 (스팟 수가 늘어나도 차체 라인 따라 균등 배치) ---
+        function generateSpotPositions(count) {
+            const positions = [];
+            // 외곽선 경로 위 상대 좌표 샘플링 비율 (0 ~ 1)
+            // 차체 루프, 필러, 펜더, 사이드실을 커버하는 다각 패스 정의
+            const carPath = [
+                { x: 0.18, y: 0.45 }, // 프론트 펜더
+                { x: 0.28, y: 0.30 }, // A-필러 하단
+                { x: 0.38, y: 0.20 }, // A-필러 상단 / 루프 1
+                { x: 0.50, y: 0.20 }, // 루프 중앙
+                { x: 0.62, y: 0.20 }, // C-필러 상단 / 루프 2
+                { x: 0.74, y: 0.30 }, // C-필러 하단
+                { x: 0.82, y: 0.45 }, // 트렁크
+                { x: 0.70, y: 0.65 }, // 도어 사이드 하단 우측
+                { x: 0.50, y: 0.65 }, // 하부 사이드실 중앙
+                { x: 0.30, y: 0.65 }  // 도어 사이드 하단 좌측
+            ];
+
+            for (let i = 0; i < count; i++) {
+                const step = i / Math.max(1, count - 1);
+                const pathIndex = step * (carPath.length - 1);
+                const baseIdx = Math.floor(pathIndex);
+                const nextIdx = Math.min(carPath.length - 1, baseIdx + 1);
+                const ratio = pathIndex - baseIdx;
+
+                const px = carPath[baseIdx].x + (carPath[nextIdx].x - carPath[baseIdx].x) * ratio;
+                const py = carPath[baseIdx].y + (carPath[nextIdx].y - carPath[baseIdx].y) * ratio;
+
+                positions.push({ x: px, y: py });
+            }
+
+            return positions;
+        }
+
+        // --- 무작위 차체 패턴 생성 ---
+        function generateNewCar() {
+            currentSpotIndex = 0;
+            hasWrongInCurrentCar = false;
+            isCarCompleted = false;
+
+            const positions = generateSpotPositions(spotCount);
+            currentCarSpots = positions.map(pos => {
+                const randomArrow = ARROWS[Math.floor(Math.random() * ARROWS.length)];
+                return {
+                    x: pos.x,
+                    y: pos.y,
+                    arrow: randomArrow,
+                    status: 'PENDING' // 'PENDING', 'CORRECT', 'WRONG'
+                };
+            });
+        }
+
+        // --- 스파크 입자 파티클 생성 ---
+        function createSparks(x, y) {
+            for (let i = 0; i < 16; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 5;
+                sparkParticles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    radius: 1.5 + Math.random() * 2,
+                    color: Math.random() > 0.3 ? '#f59e0b' : '#ef4444',
+                    life: 1.0,
+                    decay: 0.04 + Math.random() * 0.04
+                });
+            }
+        }
+
+        // --- 키보드 및 하단 버튼 조작 처리 ---
+        function handleInput(key) {
+            if (gameState !== 'PLAY' || isTransitioning) return;
+            if (!ARROWS.includes(key)) return;
+
+            const targetSpot = currentCarSpots[currentSpotIndex];
+            if (!targetSpot) return;
+
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+            const spotPxX = targetSpot.x * canvasWidth + carOffsetX;
+            const spotPxY = targetSpot.y * canvasHeight;
+
+            if (key === targetSpot.arrow) {
+                // [정답] 가점 (+1) & 용접 스파크 연출
+                score += 1;
+                targetSpot.status = 'CORRECT';
+                addFeedback('+1', spotPxX, spotPxY - 10, '#3b82f6', 20);
+                createSparks(spotPxX, spotPxY);
+            } else {
+                // [오답] 감점 (-1) & 실패 스팟 연출 후 넘어감
+                score -= 1;
+                hasWrongInCurrentCar = true;
+                targetSpot.status = 'WRONG';
+                addFeedback('-1', spotPxX, spotPxY - 10, '#ef4444', 20);
+            }
+
+            currentSpotIndex++;
+
+            // 한 차체의 모든 용접 공정이 끝난 경우
+            if (currentSpotIndex >= currentCarSpots.length) {
+                isCarCompleted = true; // 완성 회색 도색 모드 활성화
+
+                let isPerfect = !hasWrongInCurrentCar;
+                if (isPerfect) {
+                    score += 10;
+                    addFeedback('PERFECT! +10', canvasWidth / 2, canvasHeight / 2 - 20, '#f59e0b', 32, true);
+                    currentLevel++;
+                    spotCount++; // 모두 올바르게 맞춘 경우 다음 단계에서 조립 수 증가!
+                } else {
+                    addFeedback('COMPLETE!', canvasWidth / 2, canvasHeight / 2 - 20, '#9ca3af', 28, true);
+                }
+                updateUI();
+
+                // 0.3초 후 천장 레일 우측 이동 이펙트 시작
+                setTimeout(() => {
+                    if (gameState === 'PLAY') {
+                        startRailConveyorAnimation();
+                    }
+                }, 300);
+            } else {
+                updateUI();
+            }
+        }
+
+        // --- 레일 승급/이동 이펙트 처리 (우측 이송 후 좌측에서 새 금형 등판) ---
+        function startRailConveyorAnimation() {
+            isTransitioning = true;
+            let speed = 0;
+            
+            function animateOut() {
+                speed += 1.5;
+                carOffsetX += speed;
+
+                if (carOffsetX > canvas.width + 100) {
+                    // 오른쪽으로 완전히 빠져나가면 좌측에서 신규 차체 대기
+                    carOffsetX = -canvas.width - 50;
+                    generateNewCar();
+                    animateIn();
+                } else {
+                    requestAnimationFrame(animateOut);
+                }
+            }
+
+            function animateIn() {
+                carOffsetX += (0 - carOffsetX) * 0.15;
+                if (Math.abs(0 - carOffsetX) < 2) {
+                    carOffsetX = 0;
+                    isTransitioning = false;
+                } else {
+                    requestAnimationFrame(animateIn);
+                }
+            }
+
+            requestAnimationFrame(animateOut);
+        }
+
+        // 키보드 이벤트 리스너
+        window.addEventListener('keydown', (e) => {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                e.preventDefault();
+                handleInput(e.key);
+            }
+        });
+
+        // --- 피드백 효과 생성 ---
+        function addFeedback(text, x, y, color, fontSize, isBonus = false) {
+            feedbackEffects.push({
+                text: text,
+                x: x,
+                y: y,
+                color: color,
+                fontSize: fontSize,
+                alpha: 1.0,
+                scale: isBonus ? 1.4 : 1.0,
+                isBonus: isBonus,
+                life: 35
+            });
+        }
+
+        // --- 용접 조립 완결/불량 형상 그리기 헬퍼 ---
+        function drawWeldedSpot(ctx, x, y, radius, status, isCurrent, arrowKey) {
+            ctx.save();
+
+            if (status === 'CORRECT') {
+                // [성공 형상]: 용접 결합 자국 (Weld Seam) & 메탈릭 비드 효과
+                ctx.beginPath();
+                ctx.arc(x, y, radius + 2, 0, Math.PI * 2);
+                ctx.fillStyle = '#1e3a8a';
+                ctx.fill();
+
+                // 용접 접합 원형 비드(Bead) 테두리 링
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#3b82f6';
+                ctx.shadowColor = '#60a5fa';
+                ctx.shadowBlur = 8;
+                ctx.fill();
+
+                // 이음매 고열 용접 센터 스팟
+                ctx.beginPath();
+                ctx.arc(x, y, radius * 0.45, 0, Math.PI * 2);
+                ctx.fillStyle = '#93c5fd';
+                ctx.fill();
+
+            } else if (status === 'WRONG') {
+                // [불량 형상]: 용접 크랙/구멍 및 그을음 불량 표현
+                // 그을음 잔상
+                ctx.beginPath();
+                ctx.arc(x, y, radius + 4, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
+                ctx.fill();
+
+                // 결함 구멍
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#7f1d1d';
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 2;
+                ctx.fill();
+                ctx.stroke();
+
+                // X자 파손 균열 지점
+                ctx.strokeStyle = '#fca5a5';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(x - radius * 0.5, y - radius * 0.5);
+                ctx.lineTo(x + radius * 0.5, y + radius * 0.5);
+                ctx.moveTo(x + radius * 0.5, y - radius * 0.5);
+                ctx.lineTo(x - radius * 0.5, y + radius * 0.5);
+                ctx.stroke();
+
+            } else if (isCurrent) {
+                // 현재 조립 입력 대기 중인 스팟 (노란색 포커스 링)
+                ctx.beginPath();
+                ctx.arc(x, y, radius + 2, 0, Math.PI * 2);
+                ctx.fillStyle = '#0f172a';
+                ctx.strokeStyle = '#f59e0b';
+                ctx.lineWidth = 2.5;
+                ctx.shadowColor = '#fbbf24';
+                ctx.shadowBlur = 10;
+                ctx.fill();
+                ctx.stroke();
+
+                // 방향키 아이콘
+                ctx.fillStyle = '#fbbf24';
+                ctx.font = `bold ${Math.max(10, radius * 1.1)}px Inter, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(ARROW_ICONS[arrowKey], x, y);
+
+            } else {
+                // 대기 중인 미조립 스팟
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fillStyle = '#374151';
+                ctx.strokeStyle = '#4b5563';
+                ctx.lineWidth = 1.5;
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#9ca3af';
+                ctx.font = `bold ${Math.max(9, radius * 0.9)}px Inter, sans-serif`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(ARROW_ICONS[arrowKey], x, y);
+            }
+
+            ctx.restore();
+        }
+
+        // --- Canvas 그리기 (렌더링 메인 함수) ---
+        function drawCarFrame() {
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.clearRect(0, 0, w, h);
+
+            // 1. 공장 천장 레일 (Ceiling Conveyor Rail) 그리기
+            ctx.save();
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(0, 25);
+            ctx.lineTo(w, 25);
+            ctx.stroke();
+
+            // 레일 지지 바퀴/구조물 톱니 패턴
+            ctx.strokeStyle = '#334155';
+            ctx.lineWidth = 2;
+            for (let rx = 0; rx < w; rx += 20) {
+                ctx.beginPath();
+                ctx.moveTo(rx, 15);
+                ctx.lineTo(rx + 10, 25);
+                ctx.stroke();
+            }
+
+            // 2. 금형을 매달고 있는 천장 행거 클램프 (Hanger Arms)
+            const hangerCenterX = w * 0.5 + carOffsetX;
+            ctx.strokeStyle = '#64748b';
+            ctx.lineWidth = 3;
+            ctx.fillStyle = '#334155';
+
+            // 왼쪽 행거 집게
+            ctx.beginPath();
+            ctx.moveTo(hangerCenterX - w * 0.2, 25);
+            ctx.lineTo(hangerCenterX - w * 0.2, h * 0.22);
+            ctx.stroke();
+            ctx.fillRect(hangerCenterX - w * 0.2 - 6, 20, 12, 10);
+
+            // 오른쪽 행거 집게
+            ctx.beginPath();
+            ctx.moveTo(hangerCenterX + w * 0.2, 25);
+            ctx.lineTo(hangerCenterX + w * 0.2, h * 0.22);
+            ctx.stroke();
+            ctx.fillRect(hangerCenterX + w * 0.2 - 6, 20, 12, 10);
+            ctx.restore();
+
+            // 3. 차체 금형 실루엣 그리기
+            ctx.save();
+            ctx.translate(carOffsetX, 0);
+
+            ctx.strokeStyle = isCarCompleted ? '#64748b' : '#38bdf8';
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = isCarCompleted ? '#475569' : '#0284c7';
+            // 공정 완료 시 내부 회색으로 채우기
+            ctx.fillStyle = isCarCompleted ? '#475569' : '#111827';
+
+            ctx.beginPath();
+            ctx.moveTo(w * 0.12, h * 0.70);
+            ctx.lineTo(w * 0.12, h * 0.48);
+            ctx.lineTo(w * 0.25, h * 0.35);
+            ctx.lineTo(w * 0.38, h * 0.20);
+            ctx.lineTo(w * 0.62, h * 0.20);
+            ctx.lineTo(w * 0.75, h * 0.35);
+            ctx.lineTo(w * 0.88, h * 0.48);
+            ctx.lineTo(w * 0.88, h * 0.70);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // 차체 윈도우 프레임 경계 라인
+            ctx.strokeStyle = isCarCompleted ? '#334155' : '#1e293b';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(w * 0.27, h * 0.36);
+            ctx.lineTo(w * 0.39, h * 0.23);
+            ctx.lineTo(w * 0.61, h * 0.23);
+            ctx.lineTo(w * 0.73, h * 0.36);
+            ctx.stroke();
+
+            // 바퀴 홈 표시
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.arc(w * 0.27, h * 0.70, w * 0.07, 0, Math.PI * 2);
+            ctx.arc(w * 0.73, h * 0.70, w * 0.07, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // 4. 용접 스팟(Spots) 그리기 (개수에 맞춰 가변 크기 조정)
+            // 스팟 수가 많아지면 크기를 자동으로 축소하여 가시성 확보
+            const baseRadius = Math.max(9, Math.min(16, 22 - Math.floor(spotCount / 3)));
+
+            currentCarSpots.forEach((spot, index) => {
+                const sx = spot.x * w;
+                const sy = spot.y * h;
+                const isCurrent = (index === currentSpotIndex);
+
+                drawWeldedSpot(ctx, sx, sy, baseRadius, spot.status, isCurrent, spot.arrow);
+            });
+
+            ctx.restore();
+
+            // 5. 스파크 입자 파티클 애니메이션 렌더링
+            for (let i = sparkParticles.length - 1; i >= 0; i--) {
+                const p = sparkParticles[i];
+                ctx.save();
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.radius * p.life, 0, Math.PI * 2);
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.shadowColor = p.color;
+                ctx.shadowBlur = 6;
+                ctx.fill();
+                ctx.restore();
+
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.15; // 중력
+                p.life -= p.decay;
+
+                if (p.life <= 0) {
+                    sparkParticles.splice(i, 1);
+                }
+            }
+
+            // 6. 점수/텍스트 피드백 애니메이션 렌더링
+            for (let i = feedbackEffects.length - 1; i >= 0; i--) {
+                const fx = feedbackEffects[i];
+
+                ctx.save();
+                ctx.globalAlpha = fx.alpha;
+                ctx.fillStyle = fx.color;
+
+                if (fx.isBonus) {
+                    ctx.shadowColor = fx.color;
+                    ctx.shadowBlur = 12;
+                    ctx.font = `900 ${fx.fontSize * fx.scale}px Inter, sans-serif`;
+                } else {
+                    ctx.font = `bold ${fx.fontSize}px Inter, sans-serif`;
+                }
+
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(fx.text, fx.x, fx.y);
+                ctx.restore();
+
+                fx.y -= 0.8;
+                fx.alpha -= 0.025;
+                fx.life--;
+
+                if (fx.isBonus) {
+                    fx.scale = 1 + Math.sin(fx.life * 0.2) * 0.15;
+                }
+
+                if (fx.life <= 0 || fx.alpha <= 0) {
+                    feedbackEffects.splice(i, 1);
+                }
+            }
+        }
+
+        // 메인 렌더링 루프
+        function renderLoop() {
+            if (gameState === 'PLAY') {
+                drawCarFrame();
+                requestAnimationFrame(renderLoop);
+            }
+        }
+
+        // 페이지 로드 시 초기 화면 준비
+        window.onload = function() {
+            showStartScreen();
+        };
+    </script>
+</body>
+</html>
